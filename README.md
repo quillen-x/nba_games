@@ -4,6 +4,12 @@
 
 支持 **macOS / Windows / Linux / iOS / Android / Web**，桌面端与手机端自适应同一套界面逻辑。
 
+## 界面预览
+
+| 赛程与比赛详情 | 球队 / 球员排行 | 球员资料 |
+| --- | --- | --- |
+| ![赛程与比赛详情](docs/screenshots/schedule-detail.jpg) | ![球队 / 球员排行](docs/screenshots/rankings.jpg) | ![球员资料](docs/screenshots/player-profile.jpg) |
+
 ## 功能
 
 - **赛程**：按日期分组展示近期比赛，默认定位到今日；进行中场次可自动刷新（今日末场开赛约 2.5 小时后自动停止，并保留滚动位置）
@@ -67,6 +73,7 @@ lib/
 assets/
   fonts/                    # 普惠体
   images/icon.png           # 应用图标源图
+docs/screenshots/           # README 截图
 ```
 
 ## 说明
