@@ -630,7 +630,6 @@ class TencentNbaApi {
         for (final row in avg) {
           if (row is! List) continue;
           rows.add(row.map((e) => e.toString()).toList());
-          if (rows.length >= 16) break;
         }
       }
 

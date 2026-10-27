@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:nba_games/models/nba_game_model.dart';
 import 'package:nba_games/request/tencent_nba_api.dart';
+import 'package:nba_games/widgets/app_cached_image.dart';
 import 'package:nba_games/widgets/profile_dialogs.dart';
 
 /// 手机端：独立详情页
@@ -213,34 +214,39 @@ class _MatchDetailPanelState extends State<MatchDetailPanel> {
     final detail = _detail!;
     return Stack(
       children: [
-        ListView(
+        Padding(
           padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
-          children: [
-            _ScoreHeader(
-              brief: detail.brief,
-              selectedTeamIndex: _playerTeamIndex,
-              onSelectTeam: (i) => setState(() => _playerTeamIndex = i),
-              onOpenTeam: (teamId) => showTeamDialog(context, teamId: teamId),
-            ),
-            SizedBox(height: 8.h),
-            if (detail.playerBoards.isNotEmpty)
-              _PlayerStatsTable(
-                board: detail.playerBoards[
-                    _playerTeamIndex.clamp(0, detail.playerBoards.length - 1)],
-                onPlayerTap: (playerId) =>
-                    showPlayerDialog(context, playerId: playerId),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _ScoreHeader(
+                brief: detail.brief,
+                selectedTeamIndex: _playerTeamIndex,
+                onSelectTeam: (i) => setState(() => _playerTeamIndex = i),
+                onOpenTeam: (teamId) => showTeamDialog(context, teamId: teamId),
               ),
-            if (_showExtraStats) ...[
-              SizedBox(height: 20.h),
-              const _SectionTitle('每节得分'),
               SizedBox(height: 8.h),
-              _QuarterTable(detail: detail),
-              SizedBox(height: 20.h),
-              const _SectionTitle('技术统计'),
-              SizedBox(height: 8.h),
-              _TeamStatsTable(detail: detail),
+              if (detail.playerBoards.isNotEmpty)
+                Expanded(
+                  child: _PlayerStatsTable(
+                    board: detail.playerBoards[_playerTeamIndex.clamp(
+                        0, detail.playerBoards.length - 1)],
+                    onPlayerTap: (playerId) =>
+                        showPlayerDialog(context, playerId: playerId),
+                  ),
+                ),
+              if (_showExtraStats) ...[
+                SizedBox(height: 12.h),
+                const _SectionTitle('每节得分'),
+                SizedBox(height: 8.h),
+                _QuarterTable(detail: detail),
+                SizedBox(height: 12.h),
+                const _SectionTitle('技术统计'),
+                SizedBox(height: 8.h),
+                _TeamStatsTable(detail: detail),
+              ],
             ],
-          ],
+          ),
         ),
         if (_loading)
           Positioned(
@@ -423,12 +429,11 @@ class _HeaderTeam extends StatelessWidget {
     final logoWidget = GestureDetector(
       onTap: onOpen,
       child: logo != null && logo!.isNotEmpty
-          ? Image.network(
-              logo!,
+          ? AppCachedImage(
+              url: logo!,
               width: 36.w,
               height: 36.w,
-              errorBuilder: (_, __, ___) =>
-                  Icon(Icons.sports_basketball, size: 28.sp),
+              errorWidget: Icon(Icons.sports_basketball, size: 28.sp),
             )
           : Icon(Icons.sports_basketball, size: 28.sp),
     );
@@ -547,11 +552,12 @@ class _QuarterTable extends StatelessWidget {
                   DataCell(Row(
                     children: [
                       if (q.logo != null && q.logo!.isNotEmpty)
-                        Image.network(q.logo!,
-                            width: 20.w,
-                            height: 20.w,
-                            errorBuilder: (_, __, ___) =>
-                                const SizedBox.shrink()),
+                        AppCachedImage(
+                          url: q.logo!,
+                          width: 20.w,
+                          height: 20.w,
+                          errorWidget: const SizedBox.shrink(),
+                        ),
                       if (q.logo != null && q.logo!.isNotEmpty)
                         SizedBox(width: 6.w),
                       Text(q.team, style: theme.textTheme.bodyLarge),
@@ -722,147 +728,167 @@ class _PlayerStatsTable extends StatelessWidget {
 
     final headStyle = theme.textTheme.labelSmall?.copyWith(
       fontWeight: FontWeight.w600,
+      fontSize: 13.sp,
       color: theme.textTheme.bodyMedium?.color,
     );
-    final cellStyle = theme.textTheme.bodyMedium?.copyWith(fontSize: 12.sp);
+    final cellStyle = theme.textTheme.bodyMedium?.copyWith(fontSize: 14.sp);
+    final nameStyle = theme.textTheme.bodyLarge?.copyWith(fontSize: 14.5.sp);
 
     return _Panel(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: IntrinsicWidth(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ColoredBox(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.04)
-                    : Colors.black.withValues(alpha: 0.03),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final base = _widths.map((w) => w.w).toList();
+          final sum = base.fold<double>(0, (a, b) => a + b);
+          final scale =
+              constraints.maxWidth > sum ? constraints.maxWidth / sum : 1.0;
+          final widths = base.map((w) => w * scale).toList();
+          final tableWidth = sum * scale;
+
+          Widget headerRow() {
+            return ColoredBox(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.04)
+                  : Colors.black.withValues(alpha: 0.03),
+              child: Row(
+                children: [
+                  for (var i = 0; i < _headers.length; i++)
+                    SizedBox(
+                      width: widths[i],
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: i == 0 ? 12.w : 0,
+                          vertical: 10.h,
+                        ),
+                        child: Text(
+                          _headers[i],
+                          textAlign: i == 0 ? TextAlign.left : TextAlign.center,
+                          style: headStyle,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }
+
+          Widget playerRow(int index) {
+            final player = board.players[index];
+            final values = [
+              player.starter ? '${player.name}*' : player.name,
+              player.minutes,
+              player.points,
+              player.rebounds,
+              player.assists,
+              player.fieldGoals,
+              player.threePointers,
+              player.freeThrows,
+              player.steals,
+              player.blocks,
+              player.turnovers,
+              player.fouls,
+            ];
+            final highlightPoints = maxPoints > 0 &&
+                (int.tryParse(player.points) ?? 0) == maxPoints;
+            final rowBg = index.isOdd
+                ? (isDark
+                    ? Colors.white.withValues(alpha: 0.025)
+                    : Colors.black.withValues(alpha: 0.015))
+                : Colors.transparent;
+            final canOpen = player.playerId != null &&
+                player.playerId!.isNotEmpty &&
+                onPlayerTap != null;
+
+            return ColoredBox(
+              color: rowBg,
+              child: InkWell(
+                onTap: canOpen ? () => onPlayerTap!(player.playerId!) : null,
                 child: Row(
                   children: [
-                    for (var i = 0; i < _headers.length; i++)
+                    for (var i = 0; i < values.length; i++)
                       SizedBox(
-                        width: _widths[i].w,
+                        width: widths[i],
                         child: Padding(
                           padding: EdgeInsets.symmetric(
                             horizontal: i == 0 ? 12.w : 0,
-                            vertical: 10.h,
+                            vertical: 9.h,
                           ),
-                          child: Text(
-                            _headers[i],
-                            textAlign:
-                                i == 0 ? TextAlign.left : TextAlign.center,
-                            style: headStyle,
-                          ),
+                          child: i == 0
+                              ? Row(
+                                  children: [
+                                    if (player.avatar != null &&
+                                        player.avatar!.isNotEmpty) ...[
+                                      ClipOval(
+                                        child: AppCachedImage(
+                                          url: player.avatar!,
+                                          width: 22.w,
+                                          height: 22.w,
+                                          fit: BoxFit.cover,
+                                          errorWidget:
+                                              Icon(Icons.person, size: 16.sp),
+                                        ),
+                                      ),
+                                      SizedBox(width: 6.w),
+                                    ],
+                                    Expanded(
+                                      child: Text(
+                                        _display(values[i]),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: nameStyle?.copyWith(
+                                          color: canOpen
+                                              ? theme.colorScheme.primary
+                                              : null,
+                                          fontWeight:
+                                              canOpen ? FontWeight.w600 : null,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  _display(values[i]),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: i == 2
+                                      ? cellStyle?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: highlightPoints
+                                              ? theme.colorScheme.primary
+                                              : null,
+                                        )
+                                      : cellStyle,
+                                ),
                         ),
                       ),
                   ],
                 ),
               ),
-              ...List.generate(board.players.length, (index) {
-                final player = board.players[index];
-                final values = [
-                  player.starter ? '${player.name}*' : player.name,
-                  player.minutes,
-                  player.points,
-                  player.rebounds,
-                  player.assists,
-                  player.fieldGoals,
-                  player.threePointers,
-                  player.freeThrows,
-                  player.steals,
-                  player.blocks,
-                  player.turnovers,
-                  player.fouls,
-                ];
-                final highlightPoints = maxPoints > 0 &&
-                    (int.tryParse(player.points) ?? 0) == maxPoints;
-                final rowBg = index.isOdd
-                    ? (isDark
-                        ? Colors.white.withValues(alpha: 0.025)
-                        : Colors.black.withValues(alpha: 0.015))
-                    : Colors.transparent;
-                final canOpen = player.playerId != null &&
-                    player.playerId!.isNotEmpty &&
-                    onPlayerTap != null;
+            );
+          }
 
-                return ColoredBox(
-                  color: rowBg,
-                  child: InkWell(
-                    onTap: canOpen
-                        ? () => onPlayerTap!(player.playerId!)
-                        : null,
-                    child: Row(
-                      children: [
-                        for (var i = 0; i < values.length; i++)
-                          SizedBox(
-                            width: _widths[i].w,
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: i == 0 ? 12.w : 0,
-                                vertical: 8.h,
-                              ),
-                              child: i == 0
-                                  ? Row(
-                                      children: [
-                                        if (player.avatar != null &&
-                                            player.avatar!.isNotEmpty) ...[
-                                          ClipOval(
-                                            child: Image.network(
-                                              player.avatar!,
-                                              width: 20.w,
-                                              height: 20.w,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
-                                                  Icon(Icons.person,
-                                                      size: 14.sp),
-                                            ),
-                                          ),
-                                          SizedBox(width: 6.w),
-                                        ],
-                                        Expanded(
-                                          child: Text(
-                                            _display(values[i]),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: theme.textTheme.bodyLarge
-                                                ?.copyWith(
-                                              fontSize: 12.5.sp,
-                                              color: canOpen
-                                                  ? theme.colorScheme.primary
-                                                  : null,
-                                              fontWeight: canOpen
-                                                  ? FontWeight.w600
-                                                  : null,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : Text(
-                                      _display(values[i]),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: i == 2
-                                          ? cellStyle?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                              color: highlightPoints
-                                                  ? theme.colorScheme.primary
-                                                  : null,
-                                            )
-                                          : cellStyle,
-                                    ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-              SizedBox(height: 4.h),
+          final table = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              headerRow(),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: board.players.length,
+                  itemBuilder: (_, index) => playerRow(index),
+                ),
+              ),
             ],
-          ),
-        ),
+          );
+
+          if (scale > 1.0) {
+            return table;
+          }
+
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: tableWidth, child: table),
+          );
+        },
       ),
     );
   }

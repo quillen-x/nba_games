@@ -15,7 +15,7 @@ void main() async {
       (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
     await windowManager.ensureInitialized();
     const windowOptions = WindowOptions(
-      size: Size(960, 768),
+      size: Size(1080, 768),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
@@ -43,7 +43,7 @@ class MyApp extends StatelessWidget {
     return ScreenUtilInit(
       designSize: _isMobilePlatform
           ? const Size(390, 844)
-          : const Size(960, 768),
+          : const Size(1080, 768),
       minTextAdapt: true,
       splitScreenMode: true,
       builder: (context, child) {

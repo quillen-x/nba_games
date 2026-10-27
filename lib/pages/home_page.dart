@@ -7,12 +7,18 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:nba_games/models/nba_game_model.dart';
 import 'package:nba_games/pages/match_detail_page.dart';
 import 'package:nba_games/request/tencent_nba_api.dart';
+import 'package:nba_games/widgets/app_cached_image.dart';
+import 'package:nba_games/widgets/feed_dialog.dart';
+import 'package:nba_games/widgets/home_left_tab_bar.dart';
 import 'package:nba_games/widgets/rank_dialog.dart';
 import 'package:nba_games/widgets/theme_settings_button.dart';
 import 'package:window_manager/window_manager.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  /// 桌面左边栏默认：比赛
+  static const int defaultDesktopTab = 1;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -24,8 +30,12 @@ class _HomePageState extends State<HomePage> {
   static const _stopAutoRefreshAfterLastGame = Duration(hours: 2, minutes: 30);
   static const _wideBreakpoint = 800.0;
 
+  /// 0 动态 / 1 比赛 / 2 排行
+  static const _tabMatch = 1;
+
   List<NbaScheduleDay> _days = const [];
-  int _mobileTabIndex = 0;
+  int _desktopTabIndex = HomePage.defaultDesktopTab;
+  int _mobileTabIndex = _tabMatch;
   NbaGame? _selectedGame;
   bool _loading = true;
   bool _refreshing = false;
@@ -212,12 +222,8 @@ class _HomePageState extends State<HomePage> {
         children: [
           Column(
             children: [
-              if (_isDesktopOs)
-                _WindowTitleBar(
-                  title: 'NBA Games',
-                  onOpenRank: () => showRankDialog(context),
-                ),
-              Expanded(child: _buildDesktopBody(context)),
+              if (_isDesktopOs) const _WindowTitleBar(title: 'NBA Games'),
+              Expanded(child: _buildDesktopShell(context)),
             ],
           ),
           const ThemeSettingsButton(),
@@ -226,9 +232,30 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildDesktopShell(BuildContext context) {
+    return Row(
+      children: [
+        HomeLeftTabBar(
+          currentIndex: _desktopTabIndex,
+          onTabTap: (i) => setState(() => _desktopTabIndex = i),
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: _desktopTabIndex,
+            children: [
+              const FeedBody(),
+              _buildMatchDesktopPane(context),
+              const RankBody(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMobileScaffold(BuildContext context) {
     final theme = Theme.of(context);
-    final titles = ['赛程', '排行'];
+    final titles = ['动态', '比赛', '排行'];
 
     return Scaffold(
       body: Stack(
@@ -239,7 +266,7 @@ class _HomePageState extends State<HomePage> {
                 bottom: false,
                 child: _MobileAppBar(
                   title: titles[_mobileTabIndex],
-                  showRefresh: _mobileTabIndex == 0,
+                  showRefresh: _mobileTabIndex == _tabMatch,
                   onRefresh: () => _load(),
                 ),
               ),
@@ -247,6 +274,7 @@ class _HomePageState extends State<HomePage> {
                 child: IndexedStack(
                   index: _mobileTabIndex,
                   children: [
+                    const FeedBody(),
                     _buildScheduleContent(context, selectedGame: null),
                     const RankBody(),
                   ],
@@ -266,9 +294,14 @@ class _HomePageState extends State<HomePage> {
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: [
           NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined, size: 22.sp),
-            selectedIcon: Icon(Icons.calendar_month, size: 22.sp),
-            label: '赛程',
+            icon: Icon(Icons.dynamic_feed_outlined, size: 22.sp),
+            selectedIcon: Icon(Icons.dynamic_feed, size: 22.sp),
+            label: '动态',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.sports_basketball_outlined, size: 22.sp),
+            selectedIcon: Icon(Icons.sports_basketball, size: 22.sp),
+            label: '比赛',
           ),
           NavigationDestination(
             icon: Icon(Icons.leaderboard_outlined, size: 22.sp),
@@ -281,7 +314,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildDesktopBody(BuildContext context) {
+  Widget _buildMatchDesktopPane(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -413,15 +446,25 @@ class _SchedulePane extends StatefulWidget {
   final List<NbaScheduleDay> days;
   final NbaGame? selectedGame;
   final ValueChanged<NbaGame> onSelectGame;
+  final bool horizontal;
 
   const _SchedulePane({
     required this.days,
     required this.selectedGame,
     required this.onSelectGame,
+    this.horizontal = false,
   });
 
   @override
   State<_SchedulePane> createState() => _SchedulePaneState();
+}
+
+class _ScheduleItem {
+  final NbaScheduleDay day;
+  final NbaGame? game;
+  const _ScheduleItem.day(this.day) : game = null;
+  const _ScheduleItem.game(this.day, this.game);
+  bool get isDayHeader => game == null;
 }
 
 class _SchedulePaneState extends State<_SchedulePane> {
@@ -449,7 +492,7 @@ class _SchedulePaneState extends State<_SchedulePane> {
     _didScrollToToday = true;
     Scrollable.ensureVisible(
       ctx,
-      alignment: 0.0,
+      alignment: 0.05,
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
     );
@@ -463,6 +506,30 @@ class _SchedulePaneState extends State<_SchedulePane> {
     return day.label;
   }
 
+  String _shortDate(NbaScheduleDay day) {
+    if (day.isToday || day.label == '今日') return '今日';
+    final monthDay = day.date.length >= 10 ? day.date.substring(5) : day.date;
+    return '$monthDay ${day.weekday}'.trim();
+  }
+
+  List<_ScheduleItem> _flatItems() {
+    final items = <_ScheduleItem>[];
+    for (final day in widget.days) {
+      if (widget.horizontal) {
+        if (day.games.isEmpty) {
+          items.add(_ScheduleItem.day(day));
+          continue;
+        }
+        for (final game in day.games) {
+          items.add(_ScheduleItem.game(day, game));
+        }
+      } else {
+        items.add(_ScheduleItem.day(day));
+      }
+    }
+    return items;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -471,6 +538,66 @@ class _SchedulePaneState extends State<_SchedulePane> {
       return Center(child: Text('暂无赛程', style: theme.textTheme.bodyMedium));
     }
 
+    if (widget.horizontal) {
+      return _buildHorizontal(theme);
+    }
+    return _buildVertical(theme);
+  }
+
+  Widget _buildHorizontal(ThemeData theme) {
+    final items = _flatItems();
+    return ListView.separated(
+      controller: _scrollController,
+      scrollDirection: Axis.horizontal,
+      padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 10.h),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => SizedBox(width: 8.w),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final day = item.day;
+        final isToday = day.isToday || day.label == '今日';
+        final isFirstOfDay = index == 0 || items[index - 1].day.date != day.date;
+
+        if (item.isDayHeader) {
+          return KeyedSubtree(
+            key: isToday ? _todayKey : ValueKey('day-${day.date}'),
+            child: SizedBox(
+              width: 120.w,
+              child: Center(
+                child: Text(
+                  '${_shortDate(day)}\n暂无比赛',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: isToday ? theme.colorScheme.primary : null,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        final game = item.game!;
+        return KeyedSubtree(
+          key: isToday && isFirstOfDay
+              ? _todayKey
+              : ValueKey('game-${game.topicId ?? index}'),
+          child: SizedBox(
+            width: 200.w,
+            child: _GameCard(
+              game: game,
+              dateLabel: isFirstOfDay ? _shortDate(day) : null,
+              selected: widget.selectedGame?.topicId != null &&
+                  widget.selectedGame!.topicId == game.topicId,
+              onTap: () => widget.onSelectGame(game),
+              compact: true,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVertical(ThemeData theme) {
     return ListView(
       controller: _scrollController,
       padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 24.h),
@@ -534,11 +661,15 @@ class _GameCard extends StatelessWidget {
   final NbaGame game;
   final bool selected;
   final VoidCallback onTap;
+  final String? dateLabel;
+  final bool compact;
 
   const _GameCard({
     required this.game,
     required this.selected,
     required this.onTap,
+    this.dateLabel,
+    this.compact = false,
   });
 
   Color _statusColor(BuildContext context) {
@@ -578,44 +709,66 @@ class _GameCard extends StatelessWidget {
             border: Border.all(color: border, width: selected ? 1.5 : 1),
           ),
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 10.w : 12.w,
+              vertical: compact ? 8.h : 12.h,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (dateLabel != null) ...[
+                  Text(
+                    dateLabel!,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                ],
                 Row(
                   children: [
                     Text(
                       game.timeText,
                       style: theme.textTheme.bodyLarge?.copyWith(
                         fontWeight: FontWeight.w600,
+                        fontSize: compact ? 12.sp : null,
                       ),
                     ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      game.status,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: _statusColor(context),
-                        fontWeight: FontWeight.w600,
+                    SizedBox(width: 6.w),
+                    Flexible(
+                      child: Text(
+                        game.status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: _statusColor(context),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    const Spacer(),
-                    Text(
-                      game.matchType.replaceFirst('NBA ', ''),
-                      style: theme.textTheme.bodyMedium,
-                    ),
+                    if (!compact) ...[
+                      const Spacer(),
+                      Text(
+                        game.matchType.replaceFirst('NBA ', ''),
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ],
                   ],
                 ),
-                SizedBox(height: 10.h),
+                SizedBox(height: compact ? 6.h : 10.h),
                 _TeamRow(
                   name: game.homeTeam,
                   logo: game.homeLogo,
                   score: game.homeScore,
+                  compact: compact,
                 ),
-                SizedBox(height: 6.h),
+                SizedBox(height: compact ? 4.h : 6.h),
                 _TeamRow(
                   name: game.awayTeam,
                   logo: game.awayLogo,
                   score: game.awayScore,
+                  compact: compact,
                 ),
               ],
             ),
@@ -630,41 +783,47 @@ class _TeamRow extends StatelessWidget {
   final String name;
   final String? logo;
   final String? score;
+  final bool compact;
 
   const _TeamRow({
     required this.name,
     required this.logo,
     required this.score,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final logoSize = compact ? 18.w : 22.w;
     return Row(
       children: [
         if (logo != null && logo!.isNotEmpty)
-          Image.network(
-            logo!,
-            width: 22.w,
-            height: 22.w,
-            errorBuilder: (_, __, ___) =>
-                Icon(Icons.sports_basketball, size: 18.sp),
+          AppCachedImage(
+            url: logo!,
+            width: logoSize,
+            height: logoSize,
+            errorWidget:
+                Icon(Icons.sports_basketball, size: compact ? 16.sp : 18.sp),
           )
         else
-          Icon(Icons.sports_basketball, size: 18.sp),
-        SizedBox(width: 8.w),
+          Icon(Icons.sports_basketball, size: compact ? 16.sp : 18.sp),
+        SizedBox(width: compact ? 6.w : 8.w),
         Expanded(
           child: Text(
             name,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyLarge?.copyWith(
               fontWeight: FontWeight.w600,
+              fontSize: compact ? 12.sp : null,
             ),
           ),
         ),
         Text(
           score ?? '-',
-          style: theme.textTheme.titleSmall?.copyWith(fontSize: 15.sp),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontSize: compact ? 13.sp : 15.sp,
+          ),
         ),
       ],
     );
@@ -673,12 +832,8 @@ class _TeamRow extends StatelessWidget {
 
 class _WindowTitleBar extends StatelessWidget {
   final String title;
-  final VoidCallback onOpenRank;
 
-  const _WindowTitleBar({
-    required this.title,
-    required this.onOpenRank,
-  });
+  const _WindowTitleBar({required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -700,35 +855,14 @@ class _WindowTitleBar extends StatelessWidget {
             ),
           ),
         ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Text(
-              title,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 13.sp,
-              ),
+        child: Center(
+          child: Text(
+            title,
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: 13.sp,
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: onOpenRank,
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.symmetric(horizontal: 10.w),
-                  minimumSize: Size(0, 32.h),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  '排行',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13.sp,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

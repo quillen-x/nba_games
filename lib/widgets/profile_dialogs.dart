@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:nba_games/models/nba_game_model.dart';
 import 'package:nba_games/request/tencent_nba_api.dart';
+import 'package:nba_games/widgets/app_cached_image.dart';
 
 void showTeamDialog(BuildContext context, {required String teamId}) {
   if (teamId.isEmpty) return;
@@ -64,7 +65,6 @@ class _TeamDialogState extends State<_TeamDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final size = MediaQuery.sizeOf(context);
     final wide = size.width >= 800;
 
@@ -73,24 +73,9 @@ class _TeamDialogState extends State<_TeamDialog> {
       backgroundColor: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
       child: SizedBox(
-        width: wide ? 720.0 : size.width * 0.96,
+        width: wide ? 680.0 : size.width * 0.94,
         height: size.height * (wide ? 0.9 : 0.92),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _DialogTitle(
-              title: '球队资料',
-              onClose: () => Navigator.of(context).pop(),
-            ),
-            Divider(
-              height: 1,
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.black.withValues(alpha: 0.06),
-            ),
-            Expanded(child: _buildBody(theme)),
-          ],
-        ),
+        child: _buildBody(theme),
       ),
     );
   }
@@ -131,7 +116,7 @@ class _TeamDialogState extends State<_TeamDialog> {
                       if (p.rankText != null) p.rankText!,
                       if (p.record != null) p.record!,
                     ].join(' · '),
-                    style: theme.textTheme.bodyMedium,
+                    style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.sp),
                   ),
                 ],
               ),
@@ -144,28 +129,27 @@ class _TeamDialogState extends State<_TeamDialog> {
           runSpacing: 6.h,
           children: [
             if (p.coach != null && p.coach!.isNotEmpty)
-              Text('主教练：${p.coach}', style: theme.textTheme.bodyMedium),
+              Text(
+                '主教练：${p.coach}',
+                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.sp),
+              ),
             if (p.venue != null && p.venue!.isNotEmpty)
-              Text('主场：${p.venue}', style: theme.textTheme.bodyMedium),
+              Text(
+                '主场：${p.venue}',
+                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.sp),
+              ),
             if (p.city != null && p.city!.isNotEmpty)
-              Text('城市：${p.city}', style: theme.textTheme.bodyMedium),
+              Text(
+                '城市：${p.city}',
+                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.sp),
+              ),
           ],
         ),
         if (p.brief != null && p.brief!.isNotEmpty) ...[
           SizedBox(height: 10.h),
-          Text(p.brief!, style: theme.textTheme.bodyMedium),
-        ],
-        if (p.compares.isNotEmpty) ...[
-          SizedBox(height: 16.h),
-          Text('赛季数据', style: theme.textTheme.titleSmall),
-          SizedBox(height: 8.h),
-          Wrap(
-            spacing: 8.w,
-            runSpacing: 8.h,
-            children: [
-              for (final c in p.compares)
-                _StatChip(label: c.type, value: c.value, serial: c.serial),
-            ],
+          Text(
+            p.brief!,
+            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.sp),
           ),
         ],
         if (p.roster.isNotEmpty) ...[
@@ -190,11 +174,12 @@ class _TeamDialogState extends State<_TeamDialog> {
                 ].join(' '),
                 style: theme.textTheme.bodyLarge?.copyWith(
                   fontWeight: FontWeight.w600,
+                  fontSize: 15.sp,
                 ),
               ),
               subtitle: Text(
                 player.position ?? '',
-                style: theme.textTheme.bodyMedium,
+                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.sp),
               ),
               trailing: Icon(Icons.chevron_right, size: 18.sp),
               onTap: () {
@@ -217,9 +202,13 @@ class _PlayerDialog extends StatefulWidget {
 }
 
 class _PlayerDialogState extends State<_PlayerDialog> {
+  /// 赛季场均：0 常规赛（默认） / 1 季后赛
+  static const _seasonTabs = ['常规赛', '季后赛'];
+
   bool _loading = true;
   String? _error;
   NbaPlayerProfile? _profile;
+  int _seasonTabIndex = 0;
 
   @override
   void initState() {
@@ -227,10 +216,31 @@ class _PlayerDialogState extends State<_PlayerDialog> {
     _load();
   }
 
+  int _phaseColumnIndex(List<String> headers) {
+    for (var i = 0; i < headers.length; i++) {
+      if (headers[i].trim() == '阶段') return i;
+    }
+    return -1;
+  }
+
+  List<List<String>> _rowsForTab(NbaPlayerProfile p, int tabIndex) {
+    final phaseIdx = _phaseColumnIndex(p.seasonHeaders);
+    if (phaseIdx < 0) {
+      // 无阶段列时全部展示在常规赛 Tab
+      return tabIndex == 0 ? p.seasonAvgRows : const [];
+    }
+    final keyword = tabIndex == 0 ? '常规' : '季后';
+    return p.seasonAvgRows.where((row) {
+      if (phaseIdx >= row.length) return false;
+      return row[phaseIdx].contains(keyword);
+    }).toList();
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
+      _seasonTabIndex = 0;
     });
     try {
       final profile = await TencentNbaApi.getPlayerProfile(widget.playerId);
@@ -251,7 +261,6 @@ class _PlayerDialogState extends State<_PlayerDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final size = MediaQuery.sizeOf(context);
     final wide = size.width >= 800;
 
@@ -260,29 +269,14 @@ class _PlayerDialogState extends State<_PlayerDialog> {
       backgroundColor: theme.colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
       child: SizedBox(
-        width: wide ? 760.0 : size.width * 0.96,
+        width: wide ? 720.0 : size.width * 0.94,
         height: size.height * (wide ? 0.9 : 0.92),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _DialogTitle(
-              title: '球员资料',
-              onClose: () => Navigator.of(context).pop(),
-            ),
-            Divider(
-              height: 1,
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.black.withValues(alpha: 0.06),
-            ),
-            Expanded(child: _buildBody(theme, isDark)),
-          ],
-        ),
+        child: _buildBody(theme),
       ),
     );
   }
 
-  Widget _buildBody(ThemeData theme, bool isDark) {
+  Widget _buildBody(ThemeData theme) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2));
     }
@@ -291,6 +285,7 @@ class _PlayerDialogState extends State<_PlayerDialog> {
     }
 
     final p = _profile!;
+    final seasonRows = _rowsForTab(p, _seasonTabIndex);
     return ListView(
       padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 24.h),
       children: [
@@ -370,26 +365,79 @@ class _PlayerDialogState extends State<_PlayerDialog> {
               Text('生日 ${p.birthDate}', style: theme.textTheme.bodyMedium),
           ],
         ),
-        if (p.compares.isNotEmpty) ...[
-          SizedBox(height: 16.h),
-          Text('本赛季对比', style: theme.textTheme.titleSmall),
-          SizedBox(height: 8.h),
-          Wrap(
-            spacing: 8.w,
-            runSpacing: 8.h,
-            children: [
-              for (final c in p.compares)
-                _StatChip(label: c.type, value: c.value, serial: c.serial),
-            ],
-          ),
-        ],
         if (p.seasonAvgRows.isNotEmpty) ...[
           SizedBox(height: 16.h),
           Text('赛季场均', style: theme.textTheme.titleSmall),
           SizedBox(height: 8.h),
-          _SeasonAvgTable(
-            headers: p.seasonHeaders,
-            rows: p.seasonAvgRows,
+          _SeasonPhaseTabs(
+            labels: _seasonTabs,
+            selectedIndex: _seasonTabIndex,
+            onSelected: (i) => setState(() => _seasonTabIndex = i),
+          ),
+          SizedBox(height: 8.h),
+          if (seasonRows.isEmpty)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 20.h),
+              child: Center(
+                child: Text(
+                  '暂无${_seasonTabs[_seasonTabIndex]}数据',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface
+                        .withValues(alpha: 0.55),
+                  ),
+                ),
+              ),
+            )
+          else
+            _SeasonAvgTable(
+              headers: p.seasonHeaders,
+              rows: seasonRows,
+              hidePhase: true,
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SeasonPhaseTabs extends StatelessWidget {
+  final List<String> labels;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  const _SeasonPhaseTabs({
+    required this.labels,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Row(
+      children: [
+        for (var i = 0; i < labels.length; i++) ...[
+          if (i > 0) SizedBox(width: 8.w),
+          ChoiceChip(
+            label: Text(labels[i]),
+            selected: i == selectedIndex,
+            onSelected: (_) => onSelected(i),
+            labelStyle: theme.textTheme.bodyMedium?.copyWith(
+              color: i == selectedIndex
+                  ? theme.colorScheme.onPrimary
+                  : theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+            selectedColor: theme.colorScheme.primary,
+            backgroundColor: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.04),
+            side: BorderSide.none,
+            showCheckmark: false,
+            padding: EdgeInsets.symmetric(horizontal: 8.w),
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ],
@@ -397,14 +445,17 @@ class _PlayerDialogState extends State<_PlayerDialog> {
   }
 }
 
-/// 球员赛季场均表：紧凑横向滚动，突出得分等关键列
+/// 球员赛季场均表：紧凑展示，突出得分等关键列
 class _SeasonAvgTable extends StatelessWidget {
   final List<String> headers;
   final List<List<String>> rows;
+  /// 选项卡已区分阶段时隐藏「阶段」列
+  final bool hidePhase;
 
   const _SeasonAvgTable({
     required this.headers,
     required this.rows,
+    this.hidePhase = false,
   });
 
   /// 展示列优先级（空表头已在 API 侧归一为「阶段」）
@@ -435,13 +486,17 @@ class _SeasonAvgTable extends StatelessWidget {
     }
     final indexes = <int>[];
     for (final name in _preferred) {
+      if (hidePhase && name == '阶段') continue;
       final i = byName[name];
       if (i != null) indexes.add(i);
     }
     // 若 preferred 全未命中，回退为全部非空列
     if (indexes.isEmpty) {
       for (var i = 0; i < headers.length; i++) {
-        if (headers[i].trim().isNotEmpty) indexes.add(i);
+        final h = headers[i].trim();
+        if (h.isEmpty) continue;
+        if (hidePhase && h == '阶段') continue;
+        indexes.add(i);
       }
     }
     return indexes;
@@ -463,6 +518,9 @@ class _SeasonAvgTable extends StatelessWidget {
         return 2;
     }
   }
+
+  bool _alignLeft(String header) =>
+      header == '赛季' || header == '阶段' || header == '球队';
 
   @override
   Widget build(BuildContext context) {
@@ -506,19 +564,23 @@ class _SeasonAvgTable extends StatelessWidget {
               rowCells(
                 bg: headBg,
                 cells: [
-                  for (final i in indexes)
+                  for (var c = 0; c < indexes.length; c++)
                     Expanded(
-                      flex: _colFlex(headers[i]),
+                      flex: _colFlex(headers[indexes[c]]),
                       child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 4.w,
-                          vertical: 10.h,
+                        padding: EdgeInsets.fromLTRB(
+                          c == 0 ? 12.w : 4.w,
+                          10.h,
+                          c == indexes.length - 1 ? 12.w : 4.w,
+                          10.h,
                         ),
                         child: Text(
-                          headers[i],
-                          textAlign:
-                              i <= 2 ? TextAlign.left : TextAlign.center,
+                          headers[indexes[c]],
+                          textAlign: _alignLeft(headers[indexes[c]])
+                              ? TextAlign.left
+                              : TextAlign.center,
                           style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 12.sp,
                             fontWeight: FontWeight.w600,
                             color: theme.colorScheme.onSurface
                                 .withValues(alpha: 0.65),
@@ -532,19 +594,23 @@ class _SeasonAvgTable extends StatelessWidget {
                 rowCells(
                   bg: r.isOdd ? zebraBg : null,
                   cells: [
-                    for (final i in indexes)
+                    for (var c = 0; c < indexes.length; c++)
                       Expanded(
-                        flex: _colFlex(headers[i]),
+                        flex: _colFlex(headers[indexes[c]]),
                         child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 4.w,
-                            vertical: 9.h,
+                          padding: EdgeInsets.fromLTRB(
+                            c == 0 ? 12.w : 4.w,
+                            9.h,
+                            c == indexes.length - 1 ? 12.w : 4.w,
+                            9.h,
                           ),
                           child: _cell(
                             theme,
-                            header: headers[i],
-                            value: i < rows[r].length ? rows[r][i] : '-',
-                            alignLeft: i <= 2,
+                            header: headers[indexes[c]],
+                            value: indexes[c] < rows[r].length
+                                ? rows[r][indexes[c]]
+                                : '-',
+                            alignLeft: _alignLeft(headers[indexes[c]]),
                           ),
                         ),
                       ),
@@ -578,40 +644,9 @@ class _SeasonAvgTable extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       textAlign: alignLeft ? TextAlign.left : TextAlign.center,
       style: theme.textTheme.bodyMedium?.copyWith(
-        fontSize: 12.sp,
+        fontSize: 13.sp,
         fontWeight: isHighlight || isPhase ? FontWeight.w700 : FontWeight.w500,
         color: color,
-      ),
-    );
-  }
-}
-
-class _DialogTitle extends StatelessWidget {
-  final String title;
-  final VoidCallback onClose;
-
-  const _DialogTitle({required this.title, required this.onClose});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 12.h, 8.w, 0),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            tooltip: '关闭',
-            onPressed: onClose,
-            icon: Icon(Icons.close_rounded, size: 20.sp),
-          ),
-        ],
       ),
     );
   }
@@ -644,47 +679,6 @@ class _ErrorBody extends StatelessWidget {
   }
 }
 
-class _StatChip extends StatelessWidget {
-  final String label;
-  final String value;
-  final String? serial;
-
-  const _StatChip({
-    required this.label,
-    required this.value,
-    this.serial,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.black.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(8.r),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: theme.textTheme.labelSmall),
-          Text(
-            value,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (serial != null && serial!.isNotEmpty)
-            Text('联盟 $serial', style: theme.textTheme.bodyMedium),
-        ],
-      ),
-    );
-  }
-}
-
 class _NetImage extends StatelessWidget {
   final String? url;
   final double size;
@@ -702,12 +696,12 @@ class _NetImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = Icon(fallback, size: size.sp * 0.7);
     if (url == null || url!.isEmpty) return icon;
-    final image = Image.network(
-      url!,
+    final image = AppCachedImage(
+      url: url!,
       width: size.w,
       height: size.w,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => icon,
+      errorWidget: icon,
     );
     return round ? ClipOval(child: image) : image;
   }

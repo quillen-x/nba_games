@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:nba_games/models/nba_game_model.dart';
 import 'package:nba_games/request/tencent_nba_api.dart';
+import 'package:nba_games/widgets/app_cached_image.dart';
 import 'package:nba_games/widgets/profile_dialogs.dart';
 
 void showRankDialog(BuildContext context) {
@@ -21,7 +22,7 @@ class _RankDialog extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final size = MediaQuery.sizeOf(context);
     final wide = size.width >= 800;
-    final maxW = wide ? 720.0 : size.width * 0.96;
+    final maxW = wide ? 560.0 : size.width * 0.9;
     final maxH = size.height * (wide ? 0.9 : 0.92);
 
     return Dialog(
@@ -560,6 +561,7 @@ class _TableHeader extends StatelessWidget {
                 cell.text,
                 textAlign: cell.align,
                 style: theme.textTheme.labelSmall?.copyWith(
+                  fontSize: 13.sp,
                   fontWeight: FontWeight.w600,
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                 ),
@@ -594,6 +596,7 @@ class _DataCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final style = theme.textTheme.bodyMedium?.copyWith(
+      fontSize: 15.sp,
       fontWeight: (bold || emphasize) ? FontWeight.w700 : FontWeight.w500,
       color: emphasize ? theme.colorScheme.primary : null,
     );
@@ -679,12 +682,12 @@ class _Logo extends StatelessWidget {
 
     if (url == null || url!.isEmpty) return fallback;
 
-    final image = Image.network(
-      url!,
+    final image = AppCachedImage(
+      url: url!,
       width: dim,
       height: dim,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => fallback,
+      errorWidget: fallback,
     );
 
     if (!round) return image;
