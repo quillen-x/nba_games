@@ -4,11 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:nba_games/models/nba_member_model.dart';
 import 'package:nba_games/models/nba_news_model.dart';
-import 'package:nba_games/models/third_party_news_model.dart';
 import 'package:nba_games/models/x_post_model.dart';
-import 'package:nba_games/request/hupu_nba_api.dart';
 import 'package:nba_games/request/nba_members_store.dart';
-import 'package:nba_games/request/sohu_nba_api.dart';
 import 'package:nba_games/request/tencent_nba_news_api.dart';
 import 'package:nba_games/request/x_feed_service.dart';
 import 'package:nba_games/widgets/app_cached_image.dart';
@@ -86,21 +83,17 @@ class FeedBody extends StatefulWidget {
 }
 
 class _FeedBodyState extends State<FeedBody> {
-  /// 0 腾讯 / 1 搜狐 / 2 虎扑 / 3 成员动态
+  /// 0 腾讯 / 1 成员动态
+  static const _feedTabs = <String>['腾讯', '成员动态'];
   int _tab = 0;
   Object? _detail;
+  final _newsKey = GlobalKey<_HotNewsPaneState>();
+  final _memberKey = GlobalKey<_MemberFeedPaneState>();
+  final _busy = <bool>[false, false];
+
+  bool get _refreshBusy => _busy[_tab];
 
   Future<void> _openNews(NbaNewsItem item) async {
-    if (feedDetailUsesSidePanel) {
-      setState(() => _detail = item);
-      return;
-    }
-    final uri = Uri.tryParse(item.url);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
-  Future<void> _openThirdParty(ThirdPartyNewsItem item) async {
     if (feedDetailUsesSidePanel) {
       setState(() => _detail = item);
       return;
@@ -120,6 +113,19 @@ class _FeedBodyState extends State<FeedBody> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  void _setBusy(int index, bool busy) {
+    if (_busy[index] == busy) return;
+    setState(() => _busy[index] = busy);
+  }
+
+  void _onRefresh() {
+    if (_tab == 0) {
+      _newsKey.currentState?.reload();
+    } else {
+      _memberKey.currentState?.reload();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -131,59 +137,66 @@ class _FeedBodyState extends State<FeedBody> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 4.h),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final e in const [
-                      (0, '腾讯'),
-                      (1, '搜狐'),
-                      (2, '虎扑'),
-                      (3, '成员动态'),
-                    ]) ...[
-                      if (e.$1 > 0) SizedBox(width: 8.w),
-                      ChoiceChip(
-                        label: Text(e.$2),
-                        selected: _tab == e.$1,
-                        onSelected: (_) => setState(() {
-                          _tab = e.$1;
-                          _detail = null;
-                        }),
-                        labelStyle: theme.textTheme.bodyMedium?.copyWith(
-                          color: _tab == e.$1
-                              ? theme.colorScheme.onPrimary
-                              : theme.colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        selectedColor: theme.colorScheme.primary,
-                        backgroundColor: isDark
-                            ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.black.withValues(alpha: 0.04),
-                        side: BorderSide.none,
-                        showCheckmark: false,
-                        padding: EdgeInsets.symmetric(horizontal: 8.w),
-                        visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.fromLTRB(12.w, 10.h, 4.w, 4.h),
+              child: Row(
+                children: [
+                  for (var i = 0; i < _feedTabs.length; i++) ...[
+                    if (i > 0) SizedBox(width: 8.w),
+                    ChoiceChip(
+                      label: Text(_feedTabs[i]),
+                      selected: _tab == i,
+                      onSelected: (_) => setState(() {
+                        _tab = i;
+                        _detail = null;
+                      }),
+                      labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                        color: _tab == i
+                            ? theme.colorScheme.onPrimary
+                            : theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
                       ),
-                    ],
+                      selectedColor: theme.colorScheme.primary,
+                      backgroundColor: isDark
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.04),
+                      side: BorderSide.none,
+                      showCheckmark: false,
+                      padding: EdgeInsets.symmetric(horizontal: 8.w),
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ],
-                ),
+                  const Spacer(),
+                  if (_refreshBusy)
+                    Padding(
+                      padding: EdgeInsets.only(right: 4.w),
+                      child: SizedBox(
+                        width: 16.w,
+                        height: 16.w,
+                        child: const CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  IconButton(
+                    tooltip: '刷新',
+                    onPressed: _refreshBusy ? null : _onRefresh,
+                    icon: Icon(Icons.refresh_rounded, size: 20.sp),
+                  ),
+                ],
               ),
             ),
             Expanded(
               child: IndexedStack(
                 index: _tab,
                 children: [
-                  _HotNewsPane(onOpen: _openNews),
-                  _ThirdPartyNewsPane(
-                    source: ThirdPartyNewsSource.sohu,
-                    onOpen: _openThirdParty,
+                  _HotNewsPane(
+                    key: _newsKey,
+                    onOpen: _openNews,
+                    onBusyChanged: (b) => _setBusy(0, b),
                   ),
-                  _ThirdPartyNewsPane(
-                    source: ThirdPartyNewsSource.hupu,
-                    onOpen: _openThirdParty,
+                  _MemberFeedPane(
+                    key: _memberKey,
+                    onOpen: _openPost,
+                    onBusyChanged: (b) => _setBusy(1, b),
                   ),
-                  _MemberFeedPane(onOpen: _openPost),
                 ],
               ),
             ),
@@ -201,8 +214,13 @@ class _FeedBodyState extends State<FeedBody> {
 
 class _HotNewsPane extends StatefulWidget {
   final Future<void> Function(NbaNewsItem item) onOpen;
+  final ValueChanged<bool>? onBusyChanged;
 
-  const _HotNewsPane({required this.onOpen});
+  const _HotNewsPane({
+    super.key,
+    required this.onOpen,
+    this.onBusyChanged,
+  });
 
   @override
   State<_HotNewsPane> createState() => _HotNewsPaneState();
@@ -241,16 +259,25 @@ class _HotNewsPaneState extends State<_HotNewsPane> {
     }
   }
 
+  void reload() => _load();
+
+  void _setBusy(bool busy) {
+    if (_loading == busy) return;
+    _loading = busy;
+    widget.onBusyChanged?.call(busy);
+  }
+
   Future<void> _load() async {
     if (_loading) return;
     final id = ++_loadId;
     setState(() {
       _started = true;
-      _loading = true;
       _error = null;
       _contextData = null;
       _hasMore = false;
     });
+    _setBusy(true);
+    setState(() {});
     try {
       final page = await TencentNbaNewsApi.getHotNews();
       if (!mounted || id != _loadId) return;
@@ -263,7 +290,10 @@ class _HotNewsPaneState extends State<_HotNewsPane> {
       if (!mounted || id != _loadId) return;
       setState(() => _error = e.toString());
     } finally {
-      if (mounted && id == _loadId) setState(() => _loading = false);
+      if (mounted && id == _loadId) {
+        _setBusy(false);
+        setState(() {});
+      }
     }
   }
 
@@ -323,97 +353,55 @@ class _HotNewsPaneState extends State<_HotNewsPane> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(12.w, 4.h, 8.w, 4.h),
-          child: Row(
+    if (_error != null && _items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.w),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  _started
-                      ? '来自腾讯体育 · ${_items.length} 条'
-                      : '热点资讯',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                  ),
-                ),
+              Text('加载失败', style: theme.textTheme.titleSmall),
+              SizedBox(height: 8.h),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium,
               ),
-              if (_loading)
-                Padding(
-                  padding: EdgeInsets.only(right: 8.w),
-                  child: SizedBox(
-                    width: 16.w,
-                    height: 16.w,
-                    child: const CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              IconButton(
-                tooltip: '刷新',
-                onPressed: _loading ? null : _load,
-                icon: Icon(Icons.refresh_rounded, size: 20.sp),
-              ),
+              SizedBox(height: 16.h),
+              TextButton(onPressed: _load, child: const Text('重试')),
             ],
           ),
         ),
-        if (_error != null && _items.isEmpty)
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.all(24.w),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('加载失败', style: theme.textTheme.titleSmall),
-                    SizedBox(height: 8.h),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    SizedBox(height: 16.h),
-                    TextButton(onPressed: _load, child: const Text('重试')),
-                  ],
-                ),
-              ),
+      );
+    }
+    if (!_started || (_loading && _items.isEmpty)) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (_items.isEmpty) {
+      return Center(
+        child: Text(
+          '暂无热点资讯',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+          ),
+        ),
+      );
+    }
+
+    return CustomScrollView(
+      controller: _scroll,
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 8.h),
+          sliver: SliverGrid(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10.h,
+              crossAxisSpacing: 10.w,
+              childAspectRatio: 4,
             ),
-          )
-        else if (!_started || (_loading && _items.isEmpty))
-          const Expanded(
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          )
-        else if (_items.isEmpty)
-          Expanded(
-            child: Center(
-              child: Text(
-                '暂无热点资讯',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                ),
-              ),
-            ),
-          )
-        else
-          Expanded(
-            child: ListView.separated(
-              controller: _scroll,
-              padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 20.h),
-              itemCount: _items.length + (_loadingMore ? 1 : 0),
-              separatorBuilder: (_, __) => SizedBox(height: 10.h),
-              itemBuilder: (context, index) {
-                if (index >= _items.length) {
-                  return Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12.h),
-                    child: const Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  );
-                }
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
                 final item = _items[index];
                 return _NewsCard(
                   item: item,
@@ -427,8 +415,25 @@ class _HotNewsPaneState extends State<_HotNewsPane> {
                   onOpen: () => widget.onOpen(item),
                 );
               },
+              childCount: _items.length,
             ),
           ),
+        ),
+        if (_loadingMore)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 14.h),
+              child: const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          )
+        else
+          SliverToBoxAdapter(child: SizedBox(height: 12.h)),
       ],
     );
   }
@@ -458,509 +463,179 @@ class _NewsCard extends StatelessWidget {
     final fill = isDark
         ? Colors.white.withValues(alpha: 0.04)
         : Colors.black.withValues(alpha: 0.03);
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.45);
+    final hasPic = item.pic.isNotEmpty;
 
     return Material(
       color: fill,
       borderRadius: BorderRadius.circular(12.r),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onOpen,
-        borderRadius: BorderRadius.circular(12.r),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
+        child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12.r),
             border: Border.all(color: border),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (item.isHot) ...[
-                          Container(
-                            margin: EdgeInsets.only(top: 2.h),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 5.w,
-                              vertical: 1.h,
+          child: Padding(
+            padding: EdgeInsets.all(10.w),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (item.isHot) ...[
+                            Container(
+                              margin: EdgeInsets.only(top: 2.h),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 5.w,
+                                vertical: 1.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE53935),
+                                borderRadius: BorderRadius.circular(3.r),
+                              ),
+                              child: Text(
+                                '热',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10.sp,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE53935),
-                              borderRadius: BorderRadius.circular(3.r),
-                            ),
+                            SizedBox(width: 6.w),
+                          ],
+                          Expanded(
                             child: Text(
-                              '热',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10.sp,
+                              item.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyLarge?.copyWith(
                                 fontWeight: FontWeight.w700,
+                                height: 1.3,
+                                fontSize: 13.sp,
                               ),
                             ),
                           ),
-                          SizedBox(width: 6.w),
                         ],
+                      ),
+                      if (item.summary.isNotEmpty) ...[
+                        SizedBox(height: 4.h),
                         Expanded(
                           child: Text(
-                            item.title,
-                            maxLines: 2,
+                            item.summary,
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               height: 1.35,
-                              fontSize: 16.sp,
+                              fontSize: 11.sp,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.6),
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    if (item.summary.isNotEmpty) ...[
-                      SizedBox(height: 6.h),
-                      Text(
-                        item.summary,
-                        maxLines: 10,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.55,
-                          fontSize: 14.sp,
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.65),
-                        ),
+                      ] else
+                        const Spacer(),
+                      Row(
+                        children: [
+                          if (item.isVideo) ...[
+                            Icon(
+                              Icons.play_circle_outline,
+                              size: 12.sp,
+                              color: muted,
+                            ),
+                            SizedBox(width: 3.w),
+                          ],
+                          if (timeLabel != null)
+                            Flexible(
+                              child: Text(
+                                timeLabel!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontSize: 10.sp,
+                                  color: muted,
+                                ),
+                              ),
+                            ),
+                          if (viewsLabel != null) ...[
+                            if (timeLabel != null) SizedBox(width: 6.w),
+                            Text(
+                              '$viewsLabel 阅读',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontSize: 10.sp,
+                                color: muted,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
-                    SizedBox(height: 8.h),
-                    Row(
-                      children: [
-                        if (item.isVideo) ...[
-                          Icon(
-                            Icons.play_circle_outline,
-                            size: 14.sp,
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.45),
-                          ),
-                          SizedBox(width: 4.w),
-                        ],
-                        if (timeLabel != null)
-                          Text(
-                            timeLabel!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontSize: 11.sp,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.45),
-                            ),
-                          ),
-                        if (viewsLabel != null) ...[
-                          SizedBox(width: 10.w),
-                          Text(
-                            '阅读 $viewsLabel',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontSize: 11.sp,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.45),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              if (item.pic.isNotEmpty) ...[
                 SizedBox(width: 10.w),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8.r),
-                  child: AppCachedImage(
-                    url: item.pic,
-                    width: 240.w,
-                    height: 170.h,
-                    fit: BoxFit.cover,
-                    errorWidget: ColoredBox(
-                      color: theme.colorScheme.onSurface
-                          .withValues(alpha: 0.06),
-                      child: Icon(
-                        Icons.image_not_supported_outlined,
-                        size: 20.sp,
+                SizedBox(
+                  width: 140.w,
+                  child: AspectRatio(
+                    aspectRatio: 16 / 10,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8.r),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (hasPic)
+                            AppCachedImage(
+                              url: item.pic,
+                              fit: BoxFit.cover,
+                              errorWidget: ColoredBox(
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.06),
+                                child: Icon(
+                                  Icons.image_not_supported_outlined,
+                                  size: 18.sp,
+                                  color: muted,
+                                ),
+                              ),
+                            )
+                          else
+                            ColoredBox(
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.05),
+                              child: Icon(
+                                Icons.article_outlined,
+                                size: 22.sp,
+                                color: muted,
+                              ),
+                            ),
+                          if (item.isVideo)
+                            Align(
+                              alignment: Alignment.center,
+                              child: Container(
+                                padding: EdgeInsets.all(3.w),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 14.sp,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
                 ),
               ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ThirdPartyNewsPane extends StatefulWidget {
-  final ThirdPartyNewsSource source;
-  final Future<void> Function(ThirdPartyNewsItem item) onOpen;
-
-  const _ThirdPartyNewsPane({
-    required this.source,
-    required this.onOpen,
-  });
-
-  @override
-  State<_ThirdPartyNewsPane> createState() => _ThirdPartyNewsPaneState();
-}
-
-class _ThirdPartyNewsPaneState extends State<_ThirdPartyNewsPane> {
-  final _scroll = ScrollController();
-  List<ThirdPartyNewsItem> _items = const [];
-  bool _loading = false;
-  bool _loadingMore = false;
-  bool _started = false;
-  bool _hasMore = false;
-  String? _cursor;
-  String? _error;
-  int _loadId = 0;
-  int _sohuPage = 1;
-
-  String get _sourceName => switch (widget.source) {
-        ThirdPartyNewsSource.sohu => '搜狐体育',
-        ThirdPartyNewsSource.hupu => '虎扑NBA',
-      };
-
-  @override
-  void initState() {
-    super.initState();
-    _scroll.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  @override
-  void dispose() {
-    _scroll
-      ..removeListener(_onScroll)
-      ..dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (!_scroll.hasClients || !_hasMore || _loadingMore || _loading) return;
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 160) {
-      _loadMore();
-    }
-  }
-
-  Future<ThirdPartyNewsPage> _fetch({String? cursor, int sohuPage = 1}) {
-    return switch (widget.source) {
-      ThirdPartyNewsSource.sohu => SohuNbaApi.getNews(page: sohuPage),
-      ThirdPartyNewsSource.hupu => HupuNbaApi.getNews(cursorNid: cursor),
-    };
-  }
-
-  Future<void> _load() async {
-    if (_loading) return;
-    final id = ++_loadId;
-    setState(() {
-      _started = true;
-      _loading = true;
-      _error = null;
-      _cursor = null;
-      _sohuPage = 1;
-      _hasMore = false;
-    });
-    try {
-      final page = await _fetch(sohuPage: 1);
-      if (!mounted || id != _loadId) return;
-      setState(() {
-        _items = page.items;
-        _hasMore = page.hasMore;
-        _cursor = page.nextCursor;
-        _sohuPage = 1;
-      });
-    } catch (e) {
-      if (!mounted || id != _loadId) return;
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted && id == _loadId) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
-    final id = _loadId;
-    setState(() => _loadingMore = true);
-    try {
-      final nextPage = _sohuPage + 1;
-      final page = await _fetch(
-        cursor: _cursor,
-        sohuPage: nextPage,
-      );
-      if (!mounted || id != _loadId) return;
-      final seen = _items.map((e) => e.id).toSet();
-      final added =
-          page.items.where((e) => seen.add(e.id)).toList(growable: false);
-      setState(() {
-        _items = [..._items, ...added];
-        _hasMore = page.hasMore && added.isNotEmpty;
-        _cursor = page.nextCursor;
-        _sohuPage = nextPage;
-      });
-    } catch (_) {
-      // keep list
-    } finally {
-      if (mounted && id == _loadId) setState(() => _loadingMore = false);
-    }
-  }
-
-  String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final diff = now.difference(time);
-    if (diff.inMinutes < 1) return '刚刚';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
-    if (diff.inHours < 24) return '${diff.inHours} 小时前';
-    if (diff.inDays < 7) return '${diff.inDays} 天前';
-    return '${time.month}/${time.day} '
-        '${time.hour.toString().padLeft(2, '0')}:'
-        '${time.minute.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(12.w, 4.h, 8.w, 4.h),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _started
-                      ? '来自$_sourceName · ${_items.length} 条'
-                      : _sourceName,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                  ),
-                ),
-              ),
-              if (_loading)
-                Padding(
-                  padding: EdgeInsets.only(right: 8.w),
-                  child: SizedBox(
-                    width: 16.w,
-                    height: 16.w,
-                    child: const CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              IconButton(
-                tooltip: '刷新',
-                onPressed: _loading ? null : _load,
-                icon: Icon(Icons.refresh_rounded, size: 20.sp),
-              ),
-            ],
-          ),
-        ),
-        if (_error != null && _items.isEmpty)
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.all(24.w),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('加载失败', style: theme.textTheme.titleSmall),
-                    SizedBox(height: 8.h),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    SizedBox(height: 16.h),
-                    TextButton(onPressed: _load, child: const Text('重试')),
-                  ],
-                ),
-              ),
             ),
-          )
-        else if (!_started || (_loading && _items.isEmpty))
-          const Expanded(
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          )
-        else if (_items.isEmpty)
-          Expanded(
-            child: Center(
-              child: Text(
-                '暂无资讯',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                ),
-              ),
-            ),
-          )
-        else
-          Expanded(
-            child: ListView.separated(
-              controller: _scroll,
-              padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 20.h),
-              itemCount: _items.length + (_loadingMore ? 1 : 0),
-              separatorBuilder: (_, __) => SizedBox(height: 10.h),
-              itemBuilder: (context, index) {
-                if (index >= _items.length) {
-                  return Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12.h),
-                    child: const Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  );
-                }
-                final item = _items[index];
-                return _ThirdPartyNewsCard(
-                  item: item,
-                  isDark: isDark,
-                  timeLabel: item.publishedAt == null
-                      ? null
-                      : _formatTime(item.publishedAt!),
-                  onOpen: () => widget.onOpen(item),
-                );
-              },
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _ThirdPartyNewsCard extends StatelessWidget {
-  final ThirdPartyNewsItem item;
-  final bool isDark;
-  final String? timeLabel;
-  final VoidCallback onOpen;
-
-  const _ThirdPartyNewsCard({
-    required this.item,
-    required this.isDark,
-    required this.timeLabel,
-    required this.onOpen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.08);
-    final fill = isDark
-        ? Colors.white.withValues(alpha: 0.04)
-        : Colors.black.withValues(alpha: 0.03);
-
-    return Material(
-      color: fill,
-      borderRadius: BorderRadius.circular(12.r),
-      child: InkWell(
-        onTap: onOpen,
-        borderRadius: BorderRadius.circular(12.r),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12.r),
-            border: Border.all(color: border),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        height: 1.35,
-                        fontSize: 16.sp,
-                      ),
-                    ),
-                    if (item.summary.isNotEmpty && item.summary != '。') ...[
-                      SizedBox(height: 6.h),
-                      Text(
-                        item.summary,
-                        maxLines: 10,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.55,
-                          fontSize: 14.sp,
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.65),
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: 8.h),
-                    Row(
-                      children: [
-                        Text(
-                          item.sourceLabel,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 11.sp,
-                            color: theme.colorScheme.primary
-                                .withValues(alpha: 0.85),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (timeLabel != null) ...[
-                          SizedBox(width: 10.w),
-                          Text(
-                            timeLabel!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontSize: 11.sp,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.45),
-                            ),
-                          ),
-                        ],
-                        if (item.replyNum > 0) ...[
-                          SizedBox(width: 10.w),
-                          Text(
-                            '回复 ${item.replyNum}',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontSize: 11.sp,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.45),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (item.pic.isNotEmpty) ...[
-                SizedBox(width: 10.w),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8.r),
-                  child: AppCachedImage(
-                    url: item.pic,
-                    width: 240.w,
-                    height: 170.h,
-                    fit: BoxFit.cover,
-                    errorWidget: ColoredBox(
-                      color: theme.colorScheme.onSurface
-                          .withValues(alpha: 0.06),
-                      child: Icon(
-                        Icons.image_not_supported_outlined,
-                        size: 20.sp,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
           ),
         ),
       ),
@@ -970,8 +645,13 @@ class _ThirdPartyNewsCard extends StatelessWidget {
 
 class _MemberFeedPane extends StatefulWidget {
   final Future<void> Function(XPost post) onOpen;
+  final ValueChanged<bool>? onBusyChanged;
 
-  const _MemberFeedPane({required this.onOpen});
+  const _MemberFeedPane({
+    super.key,
+    required this.onOpen,
+    this.onBusyChanged,
+  });
 
   @override
   State<_MemberFeedPane> createState() => _MemberFeedPaneState();
@@ -985,8 +665,6 @@ class _MemberFeedPaneState extends State<_MemberFeedPane> {
   bool _loading = false;
   bool _started = false;
   String? _error;
-  int _done = 0;
-  int _total = 0;
   int _loadId = 0;
 
   @override
@@ -1001,16 +679,23 @@ class _MemberFeedPaneState extends State<_MemberFeedPane> {
     super.dispose();
   }
 
+  void reload() => _load();
+
+  void _setBusy(bool busy) {
+    if (_loading == busy) return;
+    _loading = busy;
+    widget.onBusyChanged?.call(busy);
+  }
+
   Future<void> _load() async {
     if (_loading) return;
     final id = ++_loadId;
     setState(() {
       _started = true;
-      _loading = true;
       _error = null;
-      _done = 0;
-      _total = 0;
     });
+    _setBusy(true);
+    setState(() {});
 
     try {
       final bundle = await NbaMembersStore.load();
@@ -1031,8 +716,6 @@ class _MemberFeedPaneState extends State<_MemberFeedPane> {
             .toList();
       }
 
-      setState(() => _total = names.length);
-
       if (names.isEmpty) {
         setState(() {
           _posts = const [];
@@ -1048,24 +731,19 @@ class _MemberFeedPaneState extends State<_MemberFeedPane> {
         minLikes: 0,
         onProgress: (items, done, total) {
           if (!mounted || id != _loadId) return;
-          setState(() {
-            _posts = _withAvatars(items, profiles);
-            _done = done;
-            _total = total;
-          });
+          setState(() => _posts = _withAvatars(items, profiles));
         },
       );
       if (!mounted || id != _loadId) return;
-      setState(() {
-        _posts = _withAvatars(posts, profiles);
-        _done = names.length;
-        _total = names.length;
-      });
+      setState(() => _posts = _withAvatars(posts, profiles));
     } catch (e) {
       if (!mounted || id != _loadId) return;
       setState(() => _error = e.toString());
     } finally {
-      if (mounted && id == _loadId) setState(() => _loading = false);
+      if (mounted && id == _loadId) {
+        _setBusy(false);
+        setState(() {});
+      }
     }
   }
 
@@ -1117,87 +795,55 @@ class _MemberFeedPaneState extends State<_MemberFeedPane> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(12.w, 4.h, 8.w, 4.h),
-          child: Row(
+    if (_error != null && _posts.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.w),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  _loading && _total > 0
-                      ? '拉取中 $_done / $_total · 已 ${_posts.length} 条'
-                      : _started
-                          ? '近 24 小时 · ${_posts.length} 条'
-                          : '成员动态',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                  ),
-                ),
+              Text('加载失败', style: theme.textTheme.titleSmall),
+              SizedBox(height: 8.h),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium,
               ),
-              if (_loading)
-                Padding(
-                  padding: EdgeInsets.only(right: 8.w),
-                  child: SizedBox(
-                    width: 16.w,
-                    height: 16.w,
-                    child: const CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              IconButton(
-                tooltip: '刷新',
-                onPressed: _loading ? null : _load,
-                icon: Icon(Icons.refresh_rounded, size: 20.sp),
-              ),
+              SizedBox(height: 16.h),
+              TextButton(onPressed: _load, child: const Text('重试')),
             ],
           ),
         ),
-        if (_error != null && _posts.isEmpty)
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.all(24.w),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('加载失败', style: theme.textTheme.titleSmall),
-                    SizedBox(height: 8.h),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    SizedBox(height: 16.h),
-                    TextButton(onPressed: _load, child: const Text('重试')),
-                  ],
-                ),
-              ),
+      );
+    }
+    if (!_started || (_loading && _posts.isEmpty)) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (_posts.isEmpty) {
+      return Center(
+        child: Text(
+          '近 24 小时暂无动态',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+          ),
+        ),
+      );
+    }
+
+    return CustomScrollView(
+      controller: _scroll,
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 8.h),
+          sliver: SliverGrid(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10.h,
+              crossAxisSpacing: 10.w,
+              childAspectRatio: 4,
             ),
-          )
-        else if (!_started || (_loading && _posts.isEmpty))
-          const Expanded(
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          )
-        else if (_posts.isEmpty)
-          Expanded(
-            child: Center(
-              child: Text(
-                '近 24 小时暂无动态',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                ),
-              ),
-            ),
-          )
-        else
-          Expanded(
-            child: ListView.separated(
-              controller: _scroll,
-              padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 20.h),
-              itemCount: _posts.length,
-              separatorBuilder: (_, __) => SizedBox(height: 10.h),
-              itemBuilder: (context, index) {
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
                 final post = _posts[index];
                 return _PostCard(
                   post: post,
@@ -1212,8 +858,11 @@ class _MemberFeedPaneState extends State<_MemberFeedPane> {
                       _openUrl('https://x.com/${post.username}'),
                 );
               },
+              childCount: _posts.length,
             ),
           ),
+        ),
+        SliverToBoxAdapter(child: SizedBox(height: 12.h)),
       ],
     );
   }
@@ -1245,158 +894,157 @@ class _PostCard extends StatelessWidget {
     final fill = isDark
         ? Colors.white.withValues(alpha: 0.04)
         : Colors.black.withValues(alpha: 0.03);
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.45);
 
     final covers = post.media
         .where((m) => m.kind == XMediaKind.photo || m.isVideo)
         .toList(growable: false);
     final cover = covers.isEmpty ? null : covers.first;
     final hasVideo = cover?.isVideo == true;
-    final imgW = 240.w;
-    final imgH = 170.h;
+    final body = post.text.isNotEmpty ? post.text : post.displayText;
 
     return Material(
       color: fill,
       borderRadius: BorderRadius.circular(12.r),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onOpen,
-        borderRadius: BorderRadius.circular(12.r),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
+        child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12.r),
             border: Border.all(color: border),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    InkWell(
-                      onTap: onOpenAuthor,
-                      child: Text(
-                        post.displayName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          height: 1.35,
-                          fontSize: 16.sp,
+          child: Padding(
+            padding: EdgeInsets.all(10.w),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      InkWell(
+                        onTap: onOpenAuthor,
+                        child: Text(
+                          post.displayName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
+                            fontSize: 13.sp,
+                          ),
                         ),
                       ),
-                    ),
-                    if (post.text.isNotEmpty || post.displayText.isNotEmpty) ...[
-                      SizedBox(height: 6.h),
-                      _HoverTranslateBody(
-                        original: post.text.isNotEmpty
-                            ? post.text
-                            : post.displayText,
-                        translation: post.hasTranslation
-                            ? post.translation
-                            : null,
+                      if (body.isNotEmpty) ...[
+                        SizedBox(height: 4.h),
+                        Expanded(
+                          child: _HoverTranslateBody(
+                            original: body,
+                            translation: post.hasTranslation
+                                ? post.translation
+                                : null,
+                            compact: true,
+                          ),
+                        ),
+                      ] else
+                        const Spacer(),
+                      Row(
+                        children: [
+                          if (hasVideo) ...[
+                            Icon(
+                              Icons.play_circle_outline,
+                              size: 12.sp,
+                              color: muted,
+                            ),
+                            SizedBox(width: 3.w),
+                          ],
+                          if (timeLabel != null)
+                            Flexible(
+                              child: Text(
+                                timeLabel!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontSize: 10.sp,
+                                  color: muted,
+                                ),
+                              ),
+                            ),
+                          if (likesLabel != null) ...[
+                            if (timeLabel != null) SizedBox(width: 6.w),
+                            Icon(
+                              Icons.favorite_border_rounded,
+                              size: 11.sp,
+                              color: muted,
+                            ),
+                            SizedBox(width: 2.w),
+                            Text(
+                              likesLabel!,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontSize: 10.sp,
+                                color: muted,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
-                    SizedBox(height: 8.h),
-                    Row(
-                      children: [
-                        if (hasVideo) ...[
-                          Icon(
-                            Icons.play_circle_outline,
-                            size: 14.sp,
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.45),
-                          ),
-                          SizedBox(width: 4.w),
-                        ],
-                        if (timeLabel != null)
-                          Text(
-                            timeLabel!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontSize: 11.sp,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.45),
-                            ),
-                          ),
-                        if (likesLabel != null) ...[
-                          SizedBox(width: 10.w),
-                          Icon(
-                            Icons.favorite_border_rounded,
-                            size: 12.sp,
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.45),
-                          ),
-                          SizedBox(width: 3.w),
-                          Text(
-                            likesLabel!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontSize: 11.sp,
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.45),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              if (cover != null) ...[
                 SizedBox(width: 10.w),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8.r),
-                  child: SizedBox(
-                    width: imgW,
-                    height: imgH,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _ProxiedNetworkImage(
-                          url: cover.listUrl,
-                          fit: BoxFit.cover,
-                        ),
-                        if (hasVideo)
-                          Align(
-                            alignment: Alignment.bottomLeft,
-                            child: Container(
-                              margin: EdgeInsets.all(6.w),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 6.w,
-                                vertical: 2.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.55),
-                                borderRadius: BorderRadius.circular(4.r),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.play_arrow_rounded,
-                                    size: 14.sp,
-                                    color: Colors.white,
-                                  ),
-                                  if (cover.durationLabel.isNotEmpty) ...[
-                                    SizedBox(width: 2.w),
-                                    Text(
-                                      cover.durationLabel,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10.sp,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                SizedBox(
+                  width: 140.w,
+                  child: AspectRatio(
+                    aspectRatio: 16 / 10,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8.r),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (cover != null)
+                            _ProxiedNetworkImage(
+                              url: cover.listUrl,
+                              fit: BoxFit.cover,
+                            )
+                          else if (post.avatarUrl.isNotEmpty)
+                            _ProxiedNetworkImage(
+                              url: post.avatarUrl,
+                              fit: BoxFit.cover,
+                            )
+                          else
+                            ColoredBox(
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.05),
+                              child: Icon(
+                                Icons.person_outline,
+                                size: 22.sp,
+                                color: muted,
                               ),
                             ),
-                          ),
-                      ],
+                          if (hasVideo)
+                            Align(
+                              alignment: Alignment.center,
+                              child: Container(
+                                padding: EdgeInsets.all(3.w),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 14.sp,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -1408,10 +1056,12 @@ class _PostCard extends StatelessWidget {
 class _HoverTranslateBody extends StatefulWidget {
   final String original;
   final String? translation;
+  final bool compact;
 
   const _HoverTranslateBody({
     required this.original,
     required this.translation,
+    this.compact = false,
   });
 
   @override
@@ -1427,6 +1077,7 @@ class _HoverTranslateBodyState extends State<_HoverTranslateBody> {
     final hasZh = (widget.translation ?? '').trim().isNotEmpty;
     final showingZh = _hover && hasZh;
     final text = showingZh ? widget.translation!.trim() : widget.original;
+    final compact = widget.compact;
 
     return MouseRegion(
       onEnter: hasZh ? (_) => setState(() => _hover = true) : null,
@@ -1434,17 +1085,20 @@ class _HoverTranslateBodyState extends State<_HoverTranslateBody> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            text,
-            maxLines: 10,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              height: 1.55,
-              fontSize: 14.sp,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: compact ? 3 : 10,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                height: compact ? 1.35 : 1.55,
+                fontSize: compact ? 11.sp : 14.sp,
+                color: theme.colorScheme.onSurface
+                    .withValues(alpha: compact ? 0.6 : 0.65),
+              ),
             ),
           ),
-          if (hasZh) ...[
+          if (hasZh && !compact) ...[
             SizedBox(height: 4.h),
             Text(
               showingZh ? '原文（移出恢复）' : '悬停查看翻译',

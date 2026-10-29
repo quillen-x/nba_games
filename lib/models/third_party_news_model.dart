@@ -23,10 +23,14 @@ class ThirdPartyNewsItem {
     this.lights = 0,
   });
 
-  String get sourceLabel => switch (source) {
-        ThirdPartyNewsSource.sohu => '搜狐',
-        ThirdPartyNewsSource.hupu => '虎扑',
-      };
+  String get sourceLabel {
+    switch (source) {
+      case ThirdPartyNewsSource.sohu:
+        return '搜狐';
+      case ThirdPartyNewsSource.hupu:
+        return '虎扑';
+    }
+  }
 }
 
 class ThirdPartyNewsPage {

@@ -12,18 +12,18 @@ class HomeLeftTabBar extends StatelessWidget {
     required this.onTabTap,
   });
 
-  static const tabs = <({IconData icon, IconData selectedIcon, String label})>[
-    (
+  static const tabs = <_LeftTabItem>[
+    _LeftTabItem(
       icon: Icons.dynamic_feed_outlined,
       selectedIcon: Icons.dynamic_feed,
       label: '动态',
     ),
-    (
+    _LeftTabItem(
       icon: Icons.sports_basketball_outlined,
       selectedIcon: Icons.sports_basketball,
       label: '比赛',
     ),
-    (
+    _LeftTabItem(
       icon: Icons.leaderboard_outlined,
       selectedIcon: Icons.leaderboard,
       label: '排行',
@@ -61,6 +61,18 @@ class HomeLeftTabBar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LeftTabItem {
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+
+  const _LeftTabItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+  });
 }
 
 class _TabButton extends StatelessWidget {

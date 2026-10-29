@@ -40,7 +40,7 @@ class _RankDialog extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    '球队 / 球员排行',
+                    '球员 / 球队排行',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -68,7 +68,7 @@ class _RankDialog extends StatelessWidget {
   }
 }
 
-/// 球队 / 球员排行内容（桌面弹窗与手机 Tab 共用）
+/// 球员 / 球队排行内容（桌面弹窗与手机 Tab 共用）
 class RankBody extends StatefulWidget {
   const RankBody({super.key});
 
@@ -106,16 +106,16 @@ class _RankBodyState extends State<RankBody>
           unselectedLabelStyle: theme.textTheme.bodyLarge,
           indicatorSize: TabBarIndicatorSize.label,
           tabs: const [
-            Tab(text: '球队'),
             Tab(text: '球员'),
+            Tab(text: '球队'),
           ],
         ),
         Expanded(
           child: TabBarView(
             controller: _mainTab,
             children: const [
-              _TeamStandingsPane(),
               _PlayerRanksPane(),
+              _TeamStandingsPane(),
             ],
           ),
         ),
@@ -199,29 +199,34 @@ class _TeamStandingsPaneState extends State<_TeamStandingsPane> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        if (_seasons.isNotEmpty)
-          Padding(
-            padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 0),
-            child: _SegmentedChips(
-              labels: _seasons.map((e) => e.label).toList(),
-              selectedIndex: _seasonIndex,
-              onSelected: (i) {
-                if (i == _seasonIndex) return;
-                setState(() => _seasonIndex = i);
-                _load(forceSeasonRefresh: true);
-              },
-            ),
-          ),
         Padding(
-          padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 4.h),
-          child: _SegmentedChips(
-            labels: _conferences,
-            selectedIndex: _index,
-            onSelected: (i) {
-              if (i == _index) return;
-              setState(() => _index = i);
-              _load();
-            },
+          padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 4.h),
+          child: Row(
+            children: [
+              Expanded(
+                child: _SegmentedChips(
+                  labels: _conferences,
+                  selectedIndex: _index,
+                  onSelected: (i) {
+                    if (i == _index) return;
+                    setState(() => _index = i);
+                    _load();
+                  },
+                ),
+              ),
+              if (_seasons.isNotEmpty) ...[
+                SizedBox(width: 8.w),
+                _SeasonDropdown(
+                  seasons: _seasons,
+                  selectedIndex: _seasonIndex,
+                  onSelected: (i) {
+                    if (i == _seasonIndex) return;
+                    setState(() => _seasonIndex = i);
+                    _load(forceSeasonRefresh: true);
+                  },
+                ),
+              ],
+            ],
           ),
         ),
         Expanded(child: _buildContent(context)),
@@ -373,29 +378,34 @@ class _PlayerRanksPaneState extends State<_PlayerRanksPane> {
 
     return Column(
       children: [
-        if (_seasons.isNotEmpty)
-          Padding(
-            padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 0),
-            child: _SegmentedChips(
-              labels: _seasons.map((e) => e.label).toList(),
-              selectedIndex: _seasonIndex,
-              onSelected: (i) {
-                if (i == _seasonIndex) return;
-                setState(() => _seasonIndex = i);
-                _load(forceSeasonRefresh: true);
-              },
-            ),
-          ),
         Padding(
-          padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 4.h),
-          child: _SegmentedChips(
-            labels: cats.map((e) => e.label).toList(),
-            selectedIndex: _index,
-            onSelected: (i) {
-              if (i == _index) return;
-              setState(() => _index = i);
-              _load();
-            },
+          padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 4.h),
+          child: Row(
+            children: [
+              Expanded(
+                child: _SegmentedChips(
+                  labels: cats.map((e) => e.label).toList(),
+                  selectedIndex: _index,
+                  onSelected: (i) {
+                    if (i == _index) return;
+                    setState(() => _index = i);
+                    _load();
+                  },
+                ),
+              ),
+              if (_seasons.isNotEmpty) ...[
+                SizedBox(width: 8.w),
+                _SeasonDropdown(
+                  seasons: _seasons,
+                  selectedIndex: _seasonIndex,
+                  onSelected: (i) {
+                    if (i == _seasonIndex) return;
+                    setState(() => _seasonIndex = i);
+                    _load(forceSeasonRefresh: true);
+                  },
+                ),
+              ],
+            ],
           ),
         ),
         Expanded(child: _buildContent(context)),
@@ -454,7 +464,6 @@ class _PlayerRanksPaneState extends State<_PlayerRanksPane> {
                     row.team,
                     flex: 3,
                     align: TextAlign.left,
-                    leading: _Logo(url: row.teamLogo),
                     onTap: row.teamId == null || row.teamId!.isEmpty
                         ? null
                         : () => showTeamDialog(context, teamId: row.teamId!),
@@ -515,6 +524,68 @@ class _SegmentedChips extends StatelessWidget {
             visualDensity: VisualDensity.compact,
           );
         },
+      ),
+    );
+  }
+}
+
+class _SeasonDropdown extends StatelessWidget {
+  final List<NbaRankSeason> seasons;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  const _SeasonDropdown({
+    required this.seasons,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final safeIndex = selectedIndex.clamp(0, seasons.length - 1);
+
+    return SizedBox(
+      width: 120.w,
+      height: 36.h,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.black.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(18.r),
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.w),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: safeIndex,
+              isDense: true,
+              isExpanded: true,
+              borderRadius: BorderRadius.circular(10.r),
+              icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18.sp),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface,
+              ),
+              items: [
+                for (var i = 0; i < seasons.length; i++)
+                  DropdownMenuItem<int>(
+                    value: i,
+                    child: Text(
+                      seasons[i].label,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (i) {
+                if (i == null) return;
+                onSelected(i);
+              },
+            ),
+          ),
+        ),
       ),
     );
   }

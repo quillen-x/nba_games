@@ -12,6 +12,18 @@ class XFeedException implements Exception {
   String toString() => message;
 }
 
+class _UserFeedResult {
+  const _UserFeedResult({
+    required this.ok,
+    required this.posts,
+    this.error,
+  });
+
+  final bool ok;
+  final List<XPost> posts;
+  final Object? error;
+}
+
 /// 通过 api.fxtwitter.com 拉取 X 动态（与 media_downloader 同源）
 class XFeedService {
   XFeedService();
@@ -162,9 +174,9 @@ class XFeedService {
               if (likesMin > 0 && post.likes <= likesMin) return false;
               return true;
             }).take(cap).toList();
-            return (ok: true, posts: filtered, error: null);
+            return _UserFeedResult(ok: true, posts: filtered);
           } catch (e) {
-            return (ok: false, posts: <XPost>[], error: e);
+            return _UserFeedResult(ok: false, posts: <XPost>[], error: e);
           }
         }),
       );

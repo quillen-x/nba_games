@@ -747,11 +747,14 @@ class _GameCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (!compact) ...[
+                    if (!compact && game.matchType.trim().isNotEmpty) ...[
                       const Spacer(),
                       Text(
                         game.matchType.replaceFirst('NBA ', ''),
-                        style: theme.textTheme.bodyMedium,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.55),
+                        ),
                       ),
                     ],
                   ],

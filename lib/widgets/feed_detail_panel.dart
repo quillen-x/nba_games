@@ -66,17 +66,24 @@ class FeedDetailPanel extends StatelessWidget {
             elevation: 12,
             color: theme.colorScheme.surface,
             shadowColor: Colors.black.withValues(alpha: 0.35),
-            child: switch (detail) {
-              final NbaNewsItem news => _NewsDetailBody(item: news),
-              final ThirdPartyNewsItem news =>
-                _ThirdPartyNewsDetailBody(item: news),
-              final XPost post => _PostDetailBody(post: post),
-              _ => const SizedBox.shrink(),
-            },
+            child: _buildDetailBody(detail),
           ),
         ),
       ],
     );
+  }
+
+  Widget _buildDetailBody(Object? detail) {
+    if (detail is NbaNewsItem) {
+      return _NewsDetailBody(item: detail);
+    }
+    if (detail is ThirdPartyNewsItem) {
+      return _ThirdPartyNewsDetailBody(item: detail);
+    }
+    if (detail is XPost) {
+      return _PostDetailBody(post: detail);
+    }
+    return const SizedBox.shrink();
   }
 }
 
@@ -351,12 +358,15 @@ class _ThirdPartyNewsDetailBodyState extends State<_ThirdPartyNewsDetailBody> {
       _detail = null;
     });
     try {
-      final detail = switch (widget.item.source) {
-        ThirdPartyNewsSource.sohu =>
-          await SohuNbaApi.getDetail(widget.item),
-        ThirdPartyNewsSource.hupu =>
-          await HupuNbaApi.getDetail(widget.item),
-      };
+      late final ThirdPartyNewsDetail detail;
+      switch (widget.item.source) {
+        case ThirdPartyNewsSource.sohu:
+          detail = await SohuNbaApi.getDetail(widget.item);
+          break;
+        case ThirdPartyNewsSource.hupu:
+          detail = await HupuNbaApi.getDetail(widget.item);
+          break;
+      }
       if (!mounted) return;
       setState(() {
         _detail = detail;
